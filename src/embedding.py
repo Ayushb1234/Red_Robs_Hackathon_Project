@@ -1,74 +1,35 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence, Union, Optional
+from typing import Sequence, Union
 
-import numpy as np
-from sentence_transformers import SentenceTransformer
+from scipy import sparse
+from sklearn.feature_extraction.text import HashingVectorizer
 
-try:
-    from config import EMBEDDING_MODEL
-except Exception:
-    EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-
+from config import HASHING_N_FEATURES, HASHING_NGRAM_RANGE
 
 TextInput = Union[str, Sequence[str]]
 
 
 class EmbeddingEngine:
-    def __init__(
-        self,
-        model_name: str = EMBEDDING_MODEL,
-        device: Optional[str] = None,
-        cache_folder: Optional[str] = None,
-    ):
-        self.model_name = model_name
-        self.device = device
-        self.cache_folder = cache_folder
-        self.model: Optional[SentenceTransformer] = None
+    def __init__(self, n_features: int = HASHING_N_FEATURES, ngram_range: tuple[int, int] = HASHING_NGRAM_RANGE):
+        self.vectorizer = HashingVectorizer(
+            n_features=n_features,
+            alternate_sign=False,
+            norm='l2',
+            lowercase=True,
+            ngram_range=ngram_range,
+            stop_words='english',
+        )
+        self.dim = n_features
 
-    def _load_model(self) -> SentenceTransformer:
-        if self.model is None:
-            self.model = SentenceTransformer(
-                self.model_name,
-                device=self.device,
-                cache_folder=self.cache_folder,
-            )
-        return self.model
-
-    def encode(
-        self,
-        texts: TextInput,
-        batch_size: int = 64,
-        normalize_embeddings: bool = True,
-        show_progress_bar: bool = False,
-    ) -> np.ndarray:
-        model = self._load_model()
-
+    def encode(self, texts: TextInput):
         if isinstance(texts, str):
             texts = [texts]
         else:
             texts = list(texts)
-
         if not texts:
-            return np.zeros((0, 384), dtype=np.float32)
+            return sparse.csr_matrix((0, self.dim), dtype='float32')
+        return self.vectorizer.transform(texts).astype('float32')
 
-        embeddings = model.encode(
-            texts,
-            batch_size=batch_size,
-            normalize_embeddings=normalize_embeddings,
-            show_progress_bar=show_progress_bar,
-            convert_to_numpy=True,
-        )
-
-        return np.asarray(embeddings, dtype=np.float32)
-
-    def encode_one(
-        self,
-        text: str,
-        normalize_embeddings: bool = True,
-    ) -> np.ndarray:
-        return self.encode(
-            [text],
-            normalize_embeddings=normalize_embeddings,
-            show_progress_bar=False,
-        )[0]
+    def encode_one(self, text: str):
+        return self.encode([text])[0]
